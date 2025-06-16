@@ -1,0 +1,175 @@
+import pygame
+
+pygame.init()
+
+# Screen setup
+WIDTH, HEIGHT = 700, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Golf Flap Game")
+
+# Colours
+WHITE = (255, 255, 255)
+GREEN = (50, 200, 50)
+RED = (255, 50, 50)
+
+# Clock
+clock = pygame.time.Clock()
+FPS = 30
+
+# Ball constants
+GRAVITY = 0.5
+FLAP_FORCE = 5
+GROUND_HEIGHT = HEIGHT - 25 # Ground at same height as green zone
+GREEN_ZONE = pygame.Rect(600, GROUND_HEIGHT - 5, 100, 10)  # area near the hole
+
+class Ball:
+    def __init__(self, x, y):
+        self.radius = 5
+        self.x = x
+        self.y = y
+        self.vx = 0
+        self.vy = 0
+        self.bounces = 0
+        self.on_green = False
+
+    def flap(self, direction):
+        if self.on_green:
+            # Limit horizontal movement on green
+            if direction == "left":
+                self.vx -= FLAP_FORCE * 0.3
+            elif direction == "right":
+                self.vx += FLAP_FORCE * 0.3
+        else:
+            if direction == "left":
+                self.vx -= FLAP_FORCE * 0.5
+                self.vy -= FLAP_FORCE
+            elif direction == "right":
+                self.vx += FLAP_FORCE * 0.5
+                self.vy -= FLAP_FORCE
+
+    def update(self):
+        # Apply gravity
+        self.vy += GRAVITY
+
+        # Update position
+        self.x += self.vx
+        self.y += self.vy
+
+        # Check for ground collision
+        if self.y + self.radius > GROUND_HEIGHT:  # Ground is at GROUND_HEIGHT
+            self.y = GROUND_HEIGHT - self.radius  # Keep the ball on ground
+            if abs(self.vy) > 1:  # Only bounce if moving fast enough
+                self.vy *= -0.3  # Reduced bounce
+                self.bounces += 1
+            else:
+                self.vy = 0  # Stop bouncing if velocity is low
+        elif self.y - self.radius < 0:  # Prevent going above the screen
+            self.y = self.radius
+
+        # Apply friction
+        self.vx *= 0.98
+        self.vy *= 0.98
+        
+        # Stop small movements to prevent endless micro-bouncing
+        if abs(self.vx) < 0.2:
+            self.vx = 0
+        if abs(self.vy) < 0.2:
+            self.vy = 0
+
+        # Check for object collision
+        if self.x - self.radius < 0 or self.x + self.radius > WIDTH:
+            self.vx *= -0.3  # Lower bounce power (less speed after hitting wall)
+            self.bounces += 1
+
+            # Keep ball within bounds
+            if self.x - self.radius < 0:
+                self.x = self.radius
+            else:
+                self.x = WIDTH - self.radius
+                
+            self.vy *= 0.8  # dampen vertical speed slightly when hitting wall
+
+            
+        # Clamp position to screen bounds
+        self.x = max(min(self.x, WIDTH - self.radius), self.radius)
+
+        # Check for green zone
+        self.on_green = GREEN_ZONE.collidepoint(self.x, self.y + self.radius)    
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), self.radius)
+
+# Initialize ball
+ball = Ball(50, GROUND_HEIGHT - 5)  # Start on the ground (GROUND_HEIGHT - radius)
+
+# define game variables
+game_paused = False
+
+# defined fonts
+font = pygame.font.SysFont("arialblack", 40)
+TEXT_COL = (255, 255, 255)
+
+def draw_text(text, font, text_col, surface, x, y):
+    img = font.render(text, True, text_col)
+    surface.blit(img, (x, y))
+
+# Game loop
+run = True
+while run:
+    screen.fill((0, 0, 0))
+    pygame.draw.rect(screen, GREEN, GREEN_ZONE)
+    
+    # Draw white ground line
+    pygame.draw.line(screen, WHITE, (0, GROUND_HEIGHT), (WIDTH, GROUND_HEIGHT), 2)
+
+    # Input handling for ball movement
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_LEFT]:
+        ball.flap("left")
+    if keys[pygame.K_RIGHT]:
+        ball.flap("right")
+
+    # Update and draw ball
+    ball.update()
+    ball.draw(screen)
+
+    # Draw Flap counter:
+    draw_text(f"Flaps: {ball.bounces}", font, TEXT_COL, screen, 10, 10)
+    if ball.on_green:
+        draw_text("On Green!", font, TEXT_COL, screen, WIDTH/2, 50)
+        if ball.vx == 0 and ball.vy == 0:
+            draw_text("You Win!", font, TEXT_COL, screen, WIDTH/2, 75)
+            pygame.display.update()
+
+            # Wait for a few seconds before quitting
+            pygame.time.wait(2000)
+            run = False
+            break
+
+    # Draw objects
+    
+
+    # Pause functionality
+    if game_paused:
+        draw_text("PAUSED", font, TEXT_COL, screen, WIDTH/2, HEIGHT/2)
+        draw_text("Press space to resume", font, TEXT_COL, screen, WIDTH/2+25, HEIGHT/2+25)
+    else:
+        draw_text("Press space to pause", font, TEXT_COL, screen, WIDTH/2, HEIGHT/2)
+
+
+    # Create control key
+    draw_text("Left Arrow: Left Flap", font, TEXT_COL, screen, 10, 50)
+    draw_text("Right Arrow: Right Flap", font, TEXT_COL, screen, 10, 75)
+              
+    # Event handling
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                game_paused = not game_paused
+
+    pygame.display.update()
+    clock.tick(FPS)
+
+pygame.quit()
