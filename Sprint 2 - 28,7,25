@@ -1,0 +1,356 @@
+
+import pygame
+from button import Button
+import random
+
+pygame.init()
+
+# Screen setup
+WIDTH, HEIGHT = 1000, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Golf Flap Game")
+
+# Colours
+WHITE = (255, 255, 255)
+GREEN = (50, 200, 50)
+RED = (255, 50, 50)
+BLUE = (50, 50, 255)
+GRAY = (128, 128, 128)
+
+# Clock
+clock = pygame.time.Clock()
+FPS = 30
+
+# Ball constants
+GRAVITY = 0.5
+FLAP_FORCE = 5
+
+# Hole constants - right half of screen, between 1/4 and top
+HOLE_X, HOLE_Y = random.randint(WIDTH//2, WIDTH), random.randint(0, HEIGHT//2)
+
+
+# Level configurations
+LEVELS = {
+    1: {
+        "name": "Easy",
+        "ground_height": HEIGHT - 25,
+        "green_zone": pygame.Rect(HOLE_X, HOLE_Y, 50, 50),
+        "hole": {"x": HOLE_X + 25, "y": HOLE_Y + 25, "radius": 15},
+        "gravity": 0.3,
+        "flap_force": 6,
+        "Number_of_obstacles": 10
+    },
+    2: {
+        "name": "Medium", 
+        "ground_height": HEIGHT - 25,
+        "green_zone": pygame.Rect(HOLE_X, HOLE_Y, 50, 50),
+        "hole": {"x": HOLE_X + 25, "y": HOLE_Y + 25, "radius": 12},
+        "gravity": 0.5,
+        "flap_force": 8,
+        "Number_of_obstacles": 20
+    },
+    3: {
+        "name": "Hard",
+        "ground_height": HEIGHT - 25,
+        "green_zone": pygame.Rect(HOLE_X, HOLE_Y, 50, 50),
+        "hole": {"x": HOLE_X + 25, "y": HOLE_Y + 25, "radius": 10},
+        "gravity": 0.7,
+        "flap_force": 10,
+        "Number_of_obstacles": 30
+    }
+}
+
+def draw_text(text, font, text_col, surface, x, y):
+    img = font.render(text, True, text_col)
+    surface.blit(img, (x, y))
+
+def main_menu():
+    # Create button surfaces
+    button_width, button_height = 200, 50
+    button_surface = pygame.Surface((button_width, button_height))
+    button_surface.fill(BLUE)
+    
+    quit_surface = pygame.Surface((button_width, button_height))
+    quit_surface.fill(RED)
+    
+    # Create buttns
+    level1_button = Button(WIDTH//2 - 100, 150, button_surface, 1)
+    level2_button = Button(WIDTH//2 - 100, 220, button_surface, 1)
+    level3_button = Button(WIDTH//2 - 100, 290, button_surface, 1)
+    quit_button = Button(WIDTH//2 - 100, 400, quit_surface, 1)
+    
+    font_title = pygame.font.SysFont("arialblack", 50)
+    font_button = pygame.font.SysFont("arialblack", 30)
+    font_small = pygame.font.SysFont("arialblack", 20)
+    
+    menu_running = True
+    
+    while menu_running:
+        screen.fill((0, 0, 0))
+        
+        # Draw titqle
+        draw_text("Golf Flap Game", font_title, WHITE, screen, WIDTH//2 - 150, 50)
+        
+        # Draw buttons
+        if level1_button.draw(screen):
+            return 1
+        if level2_button.draw(screen):
+            return 2
+        if level3_button.draw(screen):
+            return 3
+        if quit_button.draw(screen):
+            return "quit"
+        
+        # Draw button text
+        draw_text("Level 1 - Easy", font_button, WHITE, screen, WIDTH//2 - 80, 165)
+        draw_text("Level 2 - Medium", font_button, WHITE, screen, WIDTH//2 - 95, 235)
+        draw_text("Level 3 - Hard", font_button, WHITE, screen, WIDTH//2 - 75, 305)
+        draw_text("Quit", font_button, WHITE, screen, WIDTH//2 - 25, 415)
+        
+        # Draw level descriptions
+        draw_text("Large target area", font_small, GRAY, screen, WIDTH//2 - 70, 185)
+        draw_text("Medium target area", font_small, GRAY, screen, WIDTH//2 - 75, 255)
+        draw_text("Small target area", font_small, GRAY, screen, WIDTH//2 - 70, 325)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+        
+        pygame.display.update()
+        clock.tick(FPS)
+
+def play_game(level):
+    level_config = LEVELS[level]
+    pygame.display.set_caption(f"Golf Flap Game - {level_config['name']} Level")
+    
+    GROUND_HEIGHT = level_config["ground_height"]
+    GREEN_ZONE = level_config["green_zone"]
+    HOLE = level_config["hole"]
+    LEVEL_GRAVITY = level_config["gravity"]
+    LEVEL_FLAP_FORCE = level_config["flap_force"]
+    NUMBER_OF_OBSTACLES = level_config["Number_of_obstacles"]
+
+    obstacles = []
+    
+    # Creates random ostacles with the number of obstacles depending on the difficuilty of the level
+    for o in range (NUMBER_OF_OBSTACLES):
+        while True:
+            size = random.randint(30, 70)
+            x = random.randint(0, WIDTH - size)
+            y = random.randint(100, GROUND_HEIGHT - size - 30)
+            new_rect = pygame.Rect(x, y, size, size)
+
+            # Avoid overlapping with green zone and hole
+
+            hole_rect = pygame.Rect(HOLE["x"] - HOLE["radius"], HOLE["y"] - HOLE["radius"], HOLE["radius"] * 2, HOLE["radius"] * 2)
+            if not new_rect.colliderect(GREEN_ZONE) and not new_rect.colliderect(hole_rect):
+                obstacles.append(new_rect)
+                break
+        
+    class Ball:
+        def __init__(self, x, y):
+            self.radius = 5
+            self.x = x
+            self.y = y
+            self.vx = 0
+            self.vy = 0
+            self.bounces = 0
+            self.on_green = False
+            self.in_hole = False
+    
+        def flap(self, direction):
+            if self.on_green:
+                # Limit horizontal movement on green
+                if direction == "left":
+                    self.vx -= LEVEL_FLAP_FORCE * 0.3
+                elif direction == "right":
+                    self.vx += LEVEL_FLAP_FORCE * 0.3
+            else:
+                if direction == "left":
+                    self.vx -= LEVEL_FLAP_FORCE * 0.5
+                    self.vy -= LEVEL_FLAP_FORCE
+                elif direction == "right":
+                    self.vx += LEVEL_FLAP_FORCE * 0.5
+                    self.vy -= LEVEL_FLAP_FORCE
+    
+        def update(self):
+            # Apply gravity
+            self.vy += LEVEL_GRAVITY
+    
+            # Update position
+            self.x += self.vx
+            self.y += self.vy
+    
+            # Check for ground collision
+            if self.y + self.radius > GROUND_HEIGHT:
+                self.y = GROUND_HEIGHT - self.radius
+                if abs(self.vy) > 1:
+                    self.vy *= -0.3
+                else:
+                    self.vy = 0
+            elif self.y - self.radius < 0:
+                self.y = self.radius 
+                self.vy *= -0.3
+    
+            # Apply friction
+            self.vx *= 0.98
+            self.vy *= 0.98
+            
+            # Stop small movements
+            if abs(self.vx) < 0.2:
+                self.vx = 0
+            if abs(self.vy) < 0.2:
+                self.vy = 0
+    
+            # Check for wall collision
+            if self.x - self.radius < 0 or self.x + self.radius > WIDTH:
+                self.vx *= -0.3
+    
+                if self.x - self.radius < 0:
+                    self.x = self.radius
+                else:
+                    self.x = WIDTH - self.radius
+                    
+                self.vy *= 0.8
+    
+            # Clamp position to screen bounds
+            self.x = max(min(self.x, WIDTH - self.radius), self.radius)
+
+            # Add collision to the obstacles
+            ball_rect = pygame.Rect(self.x - self.radius, self.y - self.radius, self.radius * 2, self.radius * 2)
+            for obstacle in obstacles:
+                if ball_rect.colliderect(obstacle):
+                    # Calculate collision direction
+                    center_x, center_y = self.x, self.y
+                    obstacle_center_x = obstacle.centerx
+                    obstacle_center_y = obstacle.centery
+                    
+                    # Determine which side of obstacle was hit
+                    dx = center_x - obstacle_center_x
+                    dy = center_y - obstacle_center_y
+                    
+                    # Handle collision based on which side was hit
+                    if abs(dx) > abs(dy):  # Hit left or right side
+                        if dx > 0:  # Hit right side, push right
+                            self.x = obstacle.right + self.radius
+                        else:  # Hit left side, push left
+                            self.x = obstacle.left - self.radius
+                        self.vx *= -0.6
+                        self.vy *= 0.8
+                    else:  # Hit top or bottom side
+                        if dy > 0:  # Hit bottom side, push down
+                            self.y = obstacle.bottom + self.radius
+                        else:  # Hit top side, push up
+                            self.y = obstacle.top - self.radius
+                        self.vy *= -0.6
+                        self.vx *= 0.8
+                    
+                    break
+
+            # Check for green zone
+            self.on_green = GREEN_ZONE.collidepoint(self.x, self.y + self.radius)
+            
+            # Check for hole collision
+            hole_distance = ((self.x - HOLE["x"])**2 + (self.y - HOLE["y"])**2)**0.5
+            if hole_distance <= HOLE["radius"] - self.radius + 2:
+                self.in_hole = True
+                self.vx = 0
+                self.vy = 0    
+    
+        def draw(self, screen):
+            pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), self.radius)
+    
+    # Initialize ball - spawn at left side of screen on ground line
+    ball = Ball(50, GROUND_HEIGHT - 5)
+    
+    # Game variables
+    game_paused = False
+    
+    # Fonts
+    font = pygame.font.SysFont("arialblack", 40)
+    font_small = pygame.font.SysFont("arialblack", 20)
+    TEXT_COL = (255, 255, 255)
+    
+    # Game loop
+    run = True
+    while run:
+        screen.fill((0, 0, 0))
+        for obstacle in obstacles:
+            pygame.draw.rect(screen, RED, obstacle)
+        pygame.draw.rect(screen, GREEN, GREEN_ZONE)
+        
+        # Draw hole
+        pygame.draw.circle(screen, (0, 0, 0), (HOLE["x"], HOLE["y"]), HOLE["radius"])
+        pygame.draw.circle(screen, WHITE, (HOLE["x"], HOLE["y"]), HOLE["radius"], 2)
+        
+        # Draw white ground line
+        pygame.draw.line(screen, WHITE, (0, GROUND_HEIGHT), (WIDTH, GROUND_HEIGHT), 2)
+    
+        # Input handling for ball movement - now uses single key press detection
+    
+        # Update and draw ball
+        ball.update()
+        ball.draw(screen)
+    
+        # Draw UI
+        draw_text(f"Level: {level_config['name']}", font_small, TEXT_COL, screen, 10, 10)
+        draw_text(f"Flaps: {ball.bounces}", font, TEXT_COL, screen, 10, 40)
+        
+        if ball.in_hole:
+            pygame.vx = pygame.vx * 0
+            pygame.vy = pygame.vy * 0
+            draw_text(f"Hole in {ball.bounces}!", font, TEXT_COL, screen, WIDTH//2 - 70, 50)
+            draw_text("You Win!", font, TEXT_COL, screen, WIDTH//2 - 70, 100)
+            draw_text("Press Q for menu", font_small, TEXT_COL, screen, WIDTH//2 - 80, 130)
+        elif ball.on_green:
+            draw_text("On Green!", font, TEXT_COL, screen, WIDTH//2 - 80, 50)
+    
+        # Pause functionality
+        if game_paused:
+            draw_text("PAUSED", font, TEXT_COL, screen, WIDTH//2 - 70, HEIGHT//2)
+            draw_text("Press SPACE to resume", font_small, TEXT_COL, screen, WIDTH//2 - 90, HEIGHT//2 + 40)
+            draw_text("Press Q for menu", font_small, TEXT_COL, screen, WIDTH//2 - 80, HEIGHT//2 + 60)
+    
+        # Control instructions
+        draw_text("Left Arrow: Left Flap", font_small, TEXT_COL, screen, 10, HEIGHT - 60)
+        draw_text("Right Arrow: Right Flap", font_small, TEXT_COL, screen, 10, HEIGHT - 40)
+        draw_text("SPACE: Pause | Q: Menu", font_small, TEXT_COL, screen, 10, HEIGHT - 20)
+              
+        # Event handling
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    game_paused = not game_paused
+                if event.key == pygame.K_q:
+                    return "menu"
+                # Single key press detection for ball movement
+                if not game_paused:
+                    if event.key == pygame.K_LEFT:
+                        ball.flap("left")
+                        ball.bounces += 1
+                    if event.key == pygame.K_RIGHT:
+                        ball.flap("right")
+                        ball.bounces += 1
+    
+        pygame.display.update()
+        clock.tick(FPS)
+
+def main():
+    running = True
+    
+    while running:
+        choice = main_menu()
+        
+        if choice == "quit":
+            running = False
+        elif choice in [1, 2, 3]:
+            result = play_game(choice)
+            if result == "quit":
+                running = False
+    
+    pygame.quit()
+
+if __name__ == "__main__":
+    main()
